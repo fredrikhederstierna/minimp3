@@ -1524,7 +1524,7 @@ static int huffman_decode(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void imdct12(int *out, int *in)
+static void imdct12(int32_t *out, int32_t *in)
 {
     int in0, in1, in2, in3, in4, in5, t1, t2;
 
@@ -1565,10 +1565,10 @@ static void imdct12(int *out, int *in)
     out[11]= in0 + in5;
 }
 
-static void imdct36(int *out, int *buf, int *in, int *win)
+static void imdct36(int32_t *out, int32_t *buf, int32_t *in, int32_t *win)
 {
     int i, j, t0, t1, t2, t3, s0, s1, s2, s3;
-    int tmp[18], *tmp1, *in1;
+    int32_t tmp[18], *tmp1, *in1;
 
     for(i=17;i>=1;i--)
         in[i] += in[i-1];
@@ -2637,11 +2637,11 @@ mp3_decoder_t mp3_create(void) {
     return (mp3_decoder_t) dec;
 }
 
-void mp3_done(mp3_decoder_t *dec) {
-    if (dec) libc_free(dec);
+void mp3_done(mp3_decoder_t dec) {
+    libc_free(dec);
 }
 
-int mp3_decode(mp3_decoder_t *dec, void *buf, int bytes, signed short *out, mp3_info_t *info) {
+int mp3_decode(mp3_decoder_t dec, void *buf, int bytes, signed short *out, mp3_info_t *info) {
     int res, size = -1;
     mp3_context_t *s = (mp3_context_t*) dec;
     if (!s) return 0;

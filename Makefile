@@ -1,6 +1,7 @@
 # note: this Makefile builds the Linux version only
 
-CFLAGS = -Wall -Os -march=pentium
+CFLAGS = -Wall -W -Wextra -Os
+#-march=pentium
 CFLAGS += -ffast-math
 CFLAGS += -finline-functions-called-once
 CFLAGS += -fno-loop-optimize
