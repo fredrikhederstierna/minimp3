@@ -1,12 +1,12 @@
 # note: this Makefile builds the Linux version only
 
-CFLAGS = -Wall -W -Wextra -Os
+CFLAGS = -Wall -W -Wextra -Wno-unused-parameter -Wno-unused-but-set-variable -Os
 #-march=pentium
-CFLAGS += -ffast-math
-CFLAGS += -finline-functions-called-once
-CFLAGS += -fno-loop-optimize
-CFLAGS += -fexpensive-optimizations
-CFLAGS += -fpeephole2
+#CFLAGS += -ffast-math
+#CFLAGS += -finline-functions-called-once
+#CFLAGS += -fno-loop-optimize
+#CFLAGS += -fexpensive-optimizations
+#CFLAGS += -fpeephole2
 
 STRIPFLAGS  = -R .comment
 STRIPFLAGS += -R .note
@@ -24,7 +24,7 @@ release:	$(BIN)
 	upx --brute $(BIN)
 
 test:	$(BIN)
-	./$(BIN) "../../../Gargaj -- Rude Awakening.mp3"
+	./$(BIN) "./test/bach_8khz_mono.mp3" default
 
 $(BIN):	$(OBJS)
 	gcc $(OBJS) -o $(BIN) -lm -lasound

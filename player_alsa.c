@@ -12,7 +12,7 @@
 #include <alsa/asoundlib.h>
 
 size_t strlen(const char *s);
-#define out(text) write(1, (const void *) text, strlen(text))
+#define out(text) do { int dummy = write(1, (const void *) text, strlen(text)); (void)dummy; } while(0)
 
 int main(int argc, char *argv[])
 {
@@ -63,9 +63,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int i;
-    int err;
-    short buf[128];
     snd_pcm_t *playback_handle;
     snd_pcm_hw_params_t *hw_params;
 
@@ -115,7 +112,7 @@ int main(int argc, char *argv[])
       int pos = 0;
       int pcm_samples = (info.audio_bytes / 2);
       while (pcm_samples) {
-        err = snd_pcm_writei (playback_handle, &sample_buf[pos], pcm_samples);
+        int err = snd_pcm_writei (playback_handle, &sample_buf[pos], pcm_samples);
         //if (err != pcm_samples) {
           //printf("(err %d pos %d) ", err, pos);
         //}

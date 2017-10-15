@@ -809,7 +809,7 @@ static const int icos36h[9] = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static INLINE int unaligned32_be(const uint8_t *p)
+static int unaligned32_be(const uint8_t *p)
 {
         return (((p[0]<<8) | p[1])<<16) | (p[2]<<8) | (p[3]);
 }
@@ -853,11 +853,11 @@ static INLINE int unaligned32_be(const uint8_t *p)
 #define GET_CACHE(name, gb)\
         ((uint32_t)name##_cache)
 
-static INLINE int get_bits_count(bitstream_t *s){
+static int get_bits_count(bitstream_t *s){
     return s->index;
 }
 
-static INLINE void skip_bits_long(bitstream_t *s, int n){
+static void skip_bits_long(bitstream_t *s, int n){
     s->index += n;
 }
 #define skip_bits skip_bits_long
@@ -874,7 +874,7 @@ static void init_get_bits(bitstream_t *s, const uint8_t *buffer, int bit_size) {
     s->index=0;
 }
 
-static INLINE unsigned int get_bits(bitstream_t *s, int n){
+static unsigned int get_bits(bitstream_t *s, int n){
     register int tmp;
     OPEN_READER(re, s)
     UPDATE_CACHE(re, s)
@@ -884,7 +884,7 @@ static INLINE unsigned int get_bits(bitstream_t *s, int n){
     return tmp;
 }
 
-static INLINE int get_bitsz(bitstream_t *s, int n)
+static int get_bitsz(bitstream_t *s, int n)
 {
     if (n == 0)
         return 0;
@@ -892,7 +892,7 @@ static INLINE int get_bitsz(bitstream_t *s, int n)
         return get_bits(s, n);
 }
 
-static INLINE unsigned int get_bits1(bitstream_t *s){
+static unsigned int get_bits1(bitstream_t *s){
     int index= s->index;
     uint8_t result= s->buffer[ index>>3 ];
     result<<= (index&0x07);
@@ -902,7 +902,7 @@ static INLINE unsigned int get_bits1(bitstream_t *s){
     return result;
 }
 
-static INLINE void align_get_bits(bitstream_t *s)
+static void align_get_bits(bitstream_t *s)
 {
     int n= (-get_bits_count(s)) & 7;
     if(n) skip_bits(s, n);
@@ -924,7 +924,7 @@ static INLINE void align_get_bits(bitstream_t *s)
     }\
 }
 
-static INLINE int alloc_table(vlc_t *vlc, int size) {
+static int alloc_table(vlc_t *vlc, int size) {
     int index;
     index = vlc->table_size;
     vlc->table_size += size;
@@ -944,8 +944,8 @@ static int build_table(
     const void *codes, int codes_wrap, int codes_size,
     uint32_t code_prefix, int n_prefix
 ) {
-    int i, j, k, n, table_size, table_index, nb, n1, index, code_prefix2;
-    uint32_t code;
+    int i, j, k, n, table_size, table_index, nb, n1, index;
+    uint32_t code, code_prefix2;
     VLC_TYPE (*table)[2];
 
     table_size = 1 << table_nb_bits;
@@ -1010,7 +1010,7 @@ static int build_table(
     return table_index;
 }
 
-static INLINE int init_vlc(
+static int init_vlc(
     vlc_t *vlc, int nb_bits, int nb_codes,
     const void *bits, int bits_wrap, int bits_size,
     const void *codes, int codes_wrap, int codes_size
@@ -1057,7 +1057,7 @@ static INLINE int init_vlc(
     SKIP_BITS(name, gb, n)\
 }
 
-static INLINE int get_vlc2(bitstream_t *s, VLC_TYPE (*table)[2], int bits, int max_depth) {
+static int get_vlc2(bitstream_t *s, VLC_TYPE (*table)[2], int bits, int max_depth) {
     int code;
 
     OPEN_READER(re, s)
@@ -1082,7 +1082,7 @@ static void switch_buffer(mp3_context_t *s, int *pos, int *end_pos, int *end_pos
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static INLINE int mp3_check_header(uint32_t header){
+static int mp3_check_header(uint32_t header){
     /* header */
     if ((header & 0xffe00000) != 0xffe00000)
         return -1;
@@ -1119,7 +1119,7 @@ static void lsf_sf_expand(
     slen[0] = sf;
 }
 
-static INLINE int l3_unscale(int value, int exponent)
+static int l3_unscale(int value, int exponent)
 {
     unsigned int m;
     int e;
@@ -1134,7 +1134,7 @@ static INLINE int l3_unscale(int value, int exponent)
     return m;
 }
 
-static INLINE int round_sample(int *sum) {
+static int round_sample(int *sum) {
     int sum1;
     sum1 = (*sum) >> OUT_SHIFT;
     *sum &= (1<<OUT_SHIFT)-1;
@@ -1496,7 +1496,7 @@ static int huffman_decode(
         g->sb_hybrid[s_index+2]=
         g->sb_hybrid[s_index+3]= 0;
         while(code){
-            const static int idxtab[16]={3,3,2,2,1,1,1,1,0,0,0,0,0,0,0,0};
+            static const int idxtab[16]={3,3,2,2,1,1,1,1,0,0,0,0,0,0,0,0};
             int v;
             int pos= s_index+idxtab[code];
             code ^= 8>>idxtab[code];
