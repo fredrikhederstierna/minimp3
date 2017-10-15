@@ -156,8 +156,8 @@ static vlc_t huff_vlc[16];
 static vlc_t huff_quad_vlc[2];
 static uint16_t band_index_long[9][23];
 #define TABLE_4_3_SIZE (8191 + 16)*4
-static int8_t  *table_4_3_exp;
-static uint32_t *table_4_3_value;
+static int8_t   table_4_3_exp[TABLE_4_3_SIZE];
+static uint32_t table_4_3_value[TABLE_4_3_SIZE];
 static uint32_t exp_table[512];
 static uint32_t expval_table[512][16];
 static int32_t is_table[2][16];
@@ -1098,7 +1098,8 @@ static int mp3_check_header(uint32_t header){
     return 0;
 }
 
-
+#if 0
+// back-ported from libav
 static void lsf_sf_expand(
     int *slen, int sf, int n1, int n2, int n3
 ) {
@@ -1118,6 +1119,35 @@ static void lsf_sf_expand(
     sf /= n1;
     slen[0] = sf;
 }
+#else
+#define SPLIT(dst,sf,n)\
+    if(n==3){\
+        int m= (sf*171)>>9;\
+        dst= sf - 3*m;\
+        sf=m;\
+    }else if(n==4){\
+        dst= sf&3;\
+        sf>>=2;\
+    }else if(n==5){\
+        int m= (sf*205)>>10;\
+        dst= sf - 5*m;\
+        sf=m;\
+    }else if(n==6){\
+        int m= (sf*171)>>10;\
+        dst= sf - 6*m;\
+        sf=m;\
+    }else{\
+        dst=0;\
+    }
+
+static void lsf_sf_expand(int *slen, int sf, int n1, int n2, int n3)
+{
+  SPLIT(slen[3], sf, n3)
+  SPLIT(slen[2], sf, n2)
+  SPLIT(slen[1], sf, n1)
+  slen[0] = sf;
+}
+#endif
 
 static int l3_unscale(int value, int exponent)
 {
@@ -1195,7 +1225,7 @@ static void reorder_block(mp3_context_t *s, granule_t *g)
         if (s->sample_rate_index != 8) {
             ptr = g->sb_hybrid + 36;
         } else {
-            ptr = g->sb_hybrid + 48;
+            ptr = g->sb_hybrid + 72;
         }
     } else {
         ptr = g->sb_hybrid;
@@ -2152,9 +2182,12 @@ static int mp_decode_layer3(mp3_context_t *s) {
                 for(i=0;i<3;i++)
                     g->subblock_gain[i] = get_bits(&s->gb, 3);
                 /* compute huffman coded region sizes */
-                if (g->block_type == 2)
+                if (g->block_type == 2) {
+                  if (s->sample_rate_index != 8)
                     g->region_size[0] = (36 / 2);
-                else {
+                  else
+                    g->region_size[0] = (72 / 2);
+                } else {
                     if (s->sample_rate_index <= 2)
                         g->region_size[0] = (36 / 2);
                     else if (s->sample_rate_index != 8)
@@ -2196,16 +2229,14 @@ static int mp_decode_layer3(mp3_context_t *s) {
             if (g->block_type == 2) {
                 if (g->switch_point) {
                     /* if switched mode, we handle the 36 first samples as
-                       long blocks.  For 8000Hz, we handle the 48 first
-                       exponents as long blocks (XXX: check this!) */
+                       long blocks.  For 8000Hz, we handle the 72 first
+                       exponents as long blocks */
                     if (s->sample_rate_index <= 2)
                         g->long_end = 8;
-                    else if (s->sample_rate_index != 8)
-                        g->long_end = 6;
                     else
-                        g->long_end = 4; /* 8000 Hz */
+                        g->long_end = 6;
 
-                    g->short_start = 2 + (s->sample_rate_index != 8);
+                    g->short_start = 3;
                 } else {
                     g->long_end = 0;
                     g->short_start = 0;
@@ -2359,7 +2390,7 @@ static int mp_decode_layer3(mp3_context_t *s) {
                 return -1;
         } /* ch */
 
-        if (s->nb_channels == 2)
+        if (s->mode == MP3_JSTEREO)
             compute_stereo(s, &granules[0][gr], &granules[1][gr]);
 
         for(ch=0;ch<s->nb_channels;ch++) {
@@ -2484,12 +2515,6 @@ static int mp3_decode_init(mp3_context_t *s) {
         }
 
         /* compute n ^ (4/3) and store it in mantissa/exp format */
-        table_4_3_exp= libc_malloc(TABLE_4_3_SIZE * sizeof(table_4_3_exp[0]));
-        if(!table_4_3_exp)
-            return -1;
-        table_4_3_value= libc_malloc(TABLE_4_3_SIZE * sizeof(table_4_3_value[0]));
-        if(!table_4_3_value)
-            return -1;
 
         for(i=1;i<TABLE_4_3_SIZE;i++) {
             double f, fm;
@@ -2591,7 +2616,7 @@ static int mp3_decode_init(mp3_context_t *s) {
 static int mp3_decode_frame(
     mp3_context_t *s,
     int16_t *out_samples, int *data_size,
-    uint8_t *buf, int buf_size
+    const uint8_t *buf, int buf_size
 ) {
     uint32_t header;
     int out_size;

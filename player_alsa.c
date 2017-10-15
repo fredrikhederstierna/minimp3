@@ -1,4 +1,5 @@
-// minimp3 example player application for Linux/OSS
+// minimp3 example player application for Linux/ALSA
+// modified from OSS to ALSA by Fredrik Hederstierna 2017
 // this file is public domain -- do with it whatever you want!
 #include "libc.h"
 #include "minimp3.h"
@@ -8,7 +9,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <linux/soundcard.h>
 #include <alsa/asoundlib.h>
 
 size_t strlen(const char *s);
@@ -43,10 +43,12 @@ int main(int argc, char *argv[])
         return 1;
     }
     
-    bytes_left = lseek(fd, 0, SEEK_END);    
+    bytes_left = lseek(fd, 0, SEEK_END);
     file_data = mmap(0, bytes_left, PROT_READ, MAP_PRIVATE, fd, 0);
     stream_pos = (unsigned char *) file_data;
     bytes_left -= 100;
+    int tot_mp3_size = bytes_left;
+
     out("Now Playing: ");
     out(argv[1]);
 
@@ -102,28 +104,29 @@ int main(int argc, char *argv[])
     printf("play\n");
 
     /* PLAY */
+    int tot_pcm_samples = 0;
     while ((bytes_left >= 0) && (frame_size > 0)) {
       stream_pos += frame_size;
       bytes_left -= frame_size;
 
-      //printf("decode(%d) ", info.audio_bytes);
       //write(pcm, (const void *) sample_buf, info.audio_bytes);
 
       int pos = 0;
       int pcm_samples = (info.audio_bytes / 2);
+      tot_pcm_samples += pcm_samples;
+      //printf("[mp3dec %d pcm] ", info.audio_bytes/2);
       while (pcm_samples) {
-        int err = snd_pcm_writei (playback_handle, &sample_buf[pos], pcm_samples);
-        //if (err != pcm_samples) {
-          //printf("(err %d pos %d) ", err, pos);
-        //}
-        pcm_samples -= err;
-        pos += err;
+        int n = snd_pcm_writei (playback_handle, &sample_buf[pos], pcm_samples);
+        pcm_samples -= n;
+        pos += n;
       }
       //snd_pcm_start(playback_handle);
       
       // next buf
       frame_size = mp3_decode(mp3, stream_pos, bytes_left, sample_buf, NULL);
     }
+
+    printf("Decoded MP3 files size %d into %d PCM samples\n", tot_mp3_size, tot_pcm_samples);
 
     // wait some time to let sound play...
     sleep(10);
