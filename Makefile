@@ -15,7 +15,7 @@ STRIPFLAGS += -R .gnu.version
 
 BIN = minimp3
 FINALBIN = $(BIN)-linux
-OBJS = player_oss.o minimp3.o
+OBJS = player_alsa.o minimp3.o
 
 all:	$(BIN)
 
