@@ -27,7 +27,7 @@ test:	$(BIN)
 	./$(BIN) "../../../Gargaj -- Rude Awakening.mp3"
 
 $(BIN):	$(OBJS)
-	gcc $(OBJS) -o $(BIN) -lm
+	gcc $(OBJS) -o $(BIN) -lm -lasound
 
 %.o:	%.c
 	gcc $(CFLAGS) -c $< -o $@
