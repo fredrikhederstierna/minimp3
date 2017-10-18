@@ -63,9 +63,10 @@
     #define NULL 0
 #endif
 
-#ifndef M_PI
-    #define M_PI 3.14159265358979
+#ifdef M_PI
+#undef M_PI
 #endif
+#define M_PI 3.14159265358979f
 
 ///////////////////////////////////////////////////////////////////////////////
 

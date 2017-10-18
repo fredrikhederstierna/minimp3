@@ -50,7 +50,6 @@
 #define FRAC_ONE    (1 << FRAC_BITS)
 #define FIX(a)   ((int)((a) * FRAC_ONE))
 #define FIXR(a)   ((int)((a) * FRAC_ONE + 0.5))
-#define FRAC_RND(a) (((a) + (FRAC_ONE/2)) >> FRAC_BITS)
 #define FIXHR(a) ((int)((a) * (1LL<<32) + 0.5))
 
 #ifndef _MSC_VER
@@ -908,6 +907,11 @@ static void align_get_bits(bitstream_t *s)
     if(n) skip_bits(s, n);
 }
 
+static int get_bits_left(bitstream_t *s)
+{
+    return s->size_in_bits - get_bits_count(s);
+}
+
 #define GET_DATA(v, table, i, wrap, size) \
 {\
     const uint8_t *ptr = (const uint8_t *)table + i * wrap;\
@@ -1720,7 +1724,7 @@ static void compute_imdct(
     }
     for(j=mdct_long_end;j<sblimit;j++) {
         /* select frequency inversion */
-        win = mdct_win[2] + ((4 * 36) & -(j & 1));
+        win = mdct_win[2 + (4 & -(j & 1))];
         out_ptr = sb_samples + j;
 
         for(i=0; i<6; i++){
@@ -2029,20 +2033,24 @@ static void mp3_synth_filter(
     int16_t *samples, int incr,
     int32_t sb_samples[SBLIMIT]
 ) {
-    int32_t tmp[32];
     register int16_t *synth_buf;
     register const int16_t *w, *w2, *p;
-    int j, offset, v;
+    int j, offset;
     int16_t *samples2;
+#if FRAC_BITS <= 15
+    int32_t tmp[32];
     int sum, sum2;
-
-    dct32(tmp, sb_samples);
+#else
+    int64_t sum, sum2;
+#endif
 
     offset = *synth_buf_offset;
     synth_buf = synth_buf_ptr + offset;
 
+#if FRAC_BITS <= 15
+    dct32(tmp, sb_samples);
     for(j=0;j<32;j++) {
-        v = tmp[j];
+        int v = tmp[j];
         /* NOTE: can cause a loss in precision if very high amplitude
            sound */
         if (v > 32767)
@@ -2051,6 +2059,9 @@ static void mp3_synth_filter(
             v = -32768;
         synth_buf[j] = v;
     }
+#else
+    dct32(synth_buf, sb_samples);
+#endif
     /* copy to avoid wrap */
     libc_memcpy(synth_buf + 512, synth_buf, 32 * sizeof(int16_t));
 
@@ -2137,7 +2148,6 @@ static int mp_decode_layer3(mp3_context_t *s) {
     granule_t *g;
     static granule_t granules[2][2];
     static int16_t exponents[576];
-    const uint8_t *ptr;
 
     if (s->lsf) {
         main_data_begin = get_bits(&s->gb, 8);
@@ -2254,13 +2264,20 @@ static int mp_decode_layer3(mp3_context_t *s) {
         }
     }
 
-    ptr = s->gb.buffer + (get_bits_count(&s->gb)>>3);
+    const uint8_t *ptr = s->gb.buffer + (get_bits_count(&s->gb)>>3);
+    int extrasize = get_bits_left(&s->gb) >> 3;
+    if (extrasize < 0) {
+      extrasize = 0;
+    }
+    if (extrasize > EXTRABYTES) {
+      extrasize = EXTRABYTES;
+    }
     /* now we get bits from the main_data_begin offset */
     if(main_data_begin > s->last_buf_size){
         s->last_buf_size= main_data_begin;
-      }
+    }
 
-    memcpy(s->last_buf + s->last_buf_size, ptr, EXTRABYTES);
+    memcpy(s->last_buf + s->last_buf_size, ptr, extrasize);
     s->in_gb= s->gb;
     init_get_bits(&s->gb, s->last_buf + s->last_buf_size - main_data_begin, main_data_begin*8);
 
@@ -2415,28 +2432,27 @@ static int mp3_decode_main(
     if (s->error_protection)
         get_bits(&s->gb, 16);
 
-        nb_frames = mp_decode_layer3(s);
+    nb_frames = mp_decode_layer3(s);
 
-        s->last_buf_size=0;
-        if(s->in_gb.buffer){
-            align_get_bits(&s->gb);
-            i= (s->gb.size_in_bits - get_bits_count(&s->gb))>>3;
-            if(i >= 0 && i <= BACKSTEP_SIZE){
-                libc_memmove(s->last_buf, s->gb.buffer + (get_bits_count(&s->gb)>>3), i);
-                s->last_buf_size=i;
-            }
-            s->gb= s->in_gb;
-        }
+    s->last_buf_size=0;
+    if(s->in_gb.buffer){
+      align_get_bits(&s->gb);
+      i= (s->gb.size_in_bits - get_bits_count(&s->gb))>>3;
+      if(i >= 0 && i <= BACKSTEP_SIZE){
+        libc_memmove(s->last_buf, s->gb.buffer + (get_bits_count(&s->gb)>>3), i);
+        s->last_buf_size=i;
+      }
+      s->gb= s->in_gb;
+    }
 
-        align_get_bits(&s->gb);
-        i= (s->gb.size_in_bits - get_bits_count(&s->gb))>>3;
-
-        if(i<0 || i > BACKSTEP_SIZE || nb_frames<0){
-            i = buf_size - HEADER_SIZE;
-            if (BACKSTEP_SIZE < i) i = BACKSTEP_SIZE;
-        }
-        libc_memcpy(s->last_buf + s->last_buf_size, s->gb.buffer + buf_size - HEADER_SIZE - i, i);
-        s->last_buf_size += i;
+    align_get_bits(&s->gb);
+    i= (s->gb.size_in_bits - get_bits_count(&s->gb))>>3;
+    if(i<0 || i > BACKSTEP_SIZE || nb_frames<0){
+      i = buf_size - HEADER_SIZE;
+      if (BACKSTEP_SIZE < i) i = BACKSTEP_SIZE;
+    }
+    libc_memcpy(s->last_buf + s->last_buf_size, s->gb.buffer + buf_size - HEADER_SIZE - i, i);
+    s->last_buf_size += i;
 
     /* apply the synthesis filter */
     for(ch=0;ch<s->nb_channels;ch++) {
@@ -2479,7 +2495,6 @@ static int mp3_decode_init(mp3_context_t *s) {
         for(i=1;i<16;i++) {
             const huff_table_t *h = &mp3_huff_tables[i];
             int xsize, x, y;
-            unsigned int n;
             uint8_t  tmp_bits [512];
             uint16_t tmp_codes[512];
 
@@ -2487,7 +2502,6 @@ static int mp3_decode_init(mp3_context_t *s) {
             libc_memset(tmp_codes, 0, sizeof(tmp_codes));
 
             xsize = h->xsize;
-            n = xsize * xsize;
 
             j = 0;
             for(x=0;x<xsize;x++) {
@@ -2517,18 +2531,20 @@ static int mp3_decode_init(mp3_context_t *s) {
         /* compute n ^ (4/3) and store it in mantissa/exp format */
 
         for(i=1;i<TABLE_4_3_SIZE;i++) {
-            double f, fm;
+            float value = i/4;
+            float f, fm;
             int e, m;
-            f = libc_pow((double)(i/4), 4.0 / 3.0) * libc_pow(2, (i&3)*0.25);
+            f = value * cbrtf(value) * exp2f((i&3)*0.25);
             fm = libc_frexp(f, &e);
-            m = (uint32_t)(fm*(1LL<<31) + 0.5);
+            m = (uint32_t)(fm*(1LL<<31) + 0.5f);
             e+= FRAC_BITS - 31 + 5 - 100;
             table_4_3_value[i] = m;
             table_4_3_exp[i] = -e;
         }
         for(i=0; i<512*16; i++){
+            float value = i & 15;
             int exponent= (i>>4);
-            double f= libc_pow(i&15, 4.0 / 3.0) * libc_pow(2, (exponent-400)*0.25 + FRAC_BITS + 5);
+            float f = value * cbrtf(value) * exp2f((exponent-400)*0.25f + FRAC_BITS + 5);
             expval_table[exponent][i&15]= f;
             if((i&15)==1)
                 exp_table[exponent]= f;
@@ -2538,8 +2554,8 @@ static int mp3_decode_init(mp3_context_t *s) {
             float f;
             int v;
             if (i != 6) {
-                f = tan((double)i * M_PI / 12.0);
-                v = FIXR(f / (1.0 + f));
+                f = tanf((float)i * M_PI / 12.0f);
+                v = FIXR(f / (1.0f + f));
             } else {
                 v = FIXR(1.0);
             }
@@ -2547,15 +2563,15 @@ static int mp3_decode_init(mp3_context_t *s) {
             is_table[1][6 - i] = v;
         }
         for(i=7;i<16;i++)
-            is_table[0][i] = is_table[1][i] = 0.0;
+            is_table[0][i] = is_table[1][i] = 0.0f;
 
         for(i=0;i<16;i++) {
-            double f;
+            float f;
             int e, k;
 
             for(j=0;j<2;j++) {
                 e = -(j + 1) * ((i + 1) >> 1);
-                f = libc_pow(2.0, e / 4.0);
+                f = libc_pow(2.0f, e / 4.0f);
                 k = i & 1;
                 is_table_lsf[j][k ^ 1][i] = FIXR(f);
                 is_table_lsf[j][k][i] = FIXR(1.0);
@@ -2565,7 +2581,7 @@ static int mp3_decode_init(mp3_context_t *s) {
         for(i=0;i<8;i++) {
             float ci, cs, ca;
             ci = ci_table[i];
-            cs = 1.0 / sqrt(1.0 + ci * ci);
+            cs = 1.0f / sqrtf(1.0f + (ci * ci));
             ca = cs * ci;
             csa_table[i][0] = FIXHR(cs/4);
             csa_table[i][1] = FIXHR(ca/4);
@@ -2580,22 +2596,22 @@ static int mp3_decode_init(mp3_context_t *s) {
         /* compute mdct windows */
         for(i=0;i<36;i++) {
             for(j=0; j<4; j++){
-                double d;
+                float d;
 
                 if(j==2 && i%3 != 1)
                     continue;
 
-                d= sin(M_PI * (i + 0.5) / 36.0);
+                d= sinf(M_PI * (i + 0.5f) / 36.0f);
                 if(j==1){
                     if     (i>=30) d= 0;
-                    else if(i>=24) d= sin(M_PI * (i - 18 + 0.5) / 12.0);
+                    else if(i>=24) d= sinf(M_PI * (i - 18 + 0.5f) / 12.0f);
                     else if(i>=18) d= 1;
                 }else if(j==3){
                     if     (i<  6) d= 0;
-                    else if(i< 12) d= sin(M_PI * (i -  6 + 0.5) / 12.0);
+                    else if(i< 12) d= sinf(M_PI * (i -  6 + 0.5f) / 12.0f);
                     else if(i< 18) d= 1;
                 }
-                d*= 0.5 / cos(M_PI*(2*i + 19)/72);
+                d*= 0.5f / cosf(M_PI*(2*i + 19)/72);
                 if(j==2)
                     mdct_win[j][i/3] = FIXHR((d / (1<<5)));
                 else
