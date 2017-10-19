@@ -14,11 +14,12 @@
 size_t strlen(const char *s);
 #define out(text) do { int dummy = write(1, (const void *) text, strlen(text)); (void)dummy; } while(0)
 
+#define WRITE_DECODED_FILE
+
 int main(int argc, char *argv[])
 {
     mp3_decoder_t mp3;
     mp3_info_t info;
-    int fd;
     void *file_data;
     unsigned char *stream_pos;
     signed short sample_buf[MP3_MAX_SAMPLES_PER_FRAME];
@@ -35,16 +36,24 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    fd = open(argv[1], O_RDONLY);
-    if (fd < 0) {
+    int fdr = open(argv[1], O_RDONLY);
+    if (fdr < 0) {
         out("Error: cannot open `");
         out(argv[1]);
         out("'!\n");
         return 1;
     }
+
+#ifdef WRITE_DECODED_FILE
+    int fdw = open("decoded.pcm", O_WRONLY | O_CREAT, 0644);
+    if (fdw < 0) {
+        out("Error: cannot open write file.\n");
+        return 1;
+    }
+#endif
     
-    bytes_left = lseek(fd, 0, SEEK_END);
-    file_data = mmap(0, bytes_left, PROT_READ, MAP_PRIVATE, fd, 0);
+    bytes_left = lseek(fdr, 0, SEEK_END);
+    file_data = mmap(0, bytes_left, PROT_READ, MAP_PRIVATE, fdr, 0);
     stream_pos = (unsigned char *) file_data;
     bytes_left -= 100;
     int tot_mp3_size = bytes_left;
@@ -115,6 +124,13 @@ int main(int argc, char *argv[])
       int pcm_samples = (info.audio_bytes / 2);
       tot_pcm_samples += pcm_samples;
       //printf("[mp3dec %d pcm] ", info.audio_bytes/2);
+#ifdef WRITE_DECODED_FILE
+      int res = write(fdw, (const void *) sample_buf, info.audio_bytes);
+      if (res != info.audio_bytes) {
+        out("Error: cannot write pcm to file.\n");
+        return 1;
+      }
+#endif
       while (pcm_samples) {
         int n = snd_pcm_writei (playback_handle, &sample_buf[pos], pcm_samples);
         pcm_samples -= n;
@@ -132,6 +148,12 @@ int main(int argc, char *argv[])
     sleep(10);
     /* Close the handle and exit */
     snd_pcm_close (playback_handle);
-
+#ifdef WRITE_DECODED_FILE
+      int res = close(fdw);
+      if (res < 0) {
+        out("Error: cannot close write file.\n");
+        return 1;
+      }
+#endif
     return 0;
 }
