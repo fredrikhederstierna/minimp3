@@ -66,106 +66,9 @@
 #ifdef M_PI
 #undef M_PI
 #endif
-#define M_PI 3.14159265358979f
+#define M_PI 3.14159265358979
 
 ///////////////////////////////////////////////////////////////////////////////
-
-#if NEED_MINILIBC 
-
-static INLINE void libc_memset(void *dest, int value, int count) {
-    if (!count) return;
-    __asm {
-        cld
-        mov edi, dest
-        mov eax, value
-        mov ecx, count
-        rep stosb
-    }
-}
-
-static INLINE void libc_memcpy(void *dest, const void *src, int count) {
-    if (!count) return;
-    __asm {
-        cld
-        mov esi, src
-        mov edi, dest
-        mov ecx, count
-        rep movsb
-    }
-}
-
-#define libc_memmove libc_memcpy
-
-static INLINE void* libc_malloc(int size) {
-    return (void*) LocalAlloc(LMEM_FIXED, size);
-}
-
-static INLINE void* libc_calloc(int size, int nmemb) {
-    return (void*) LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, size * nmemb);
-}
-
-static INLINE void* libc_realloc(void* old, int size) {
-    int oldsize = (int) LocalSize((HLOCAL) old);
-    void *mem;
-    if (size <= oldsize) return old;
-    mem = LocalAlloc(LMEM_FIXED, size);
-    libc_memcpy(mem, old, oldsize);
-    LocalFree((HLOCAL) old);
-    return mem;
-}
-
-static INLINE void libc_free(void *mem) {
-    LocalFree((HLOCAL) mem);
-}
-
-static INLINE double libc_frexp(double x, int *e) {
-    double res = -9999.999;
-    unsigned __int64 i = *(unsigned __int64*)(&x);
-    if (!(i & 0x7F00000000000000UL)) {
-        *e = 0;
-        return x;
-    }
-    *e = ((i << 1) >> 53) - 1022;
-    i &= 0x800FFFFFFFFFFFFFUL;
-    i |= 0x3FF0000000000000UL;
-    return *(double*)(&i) * 0.5;
-}
-
-static INLINE double __declspec(naked) libc_exp(double x) { __asm {
-    fldl2e
-    fld qword ptr [esp+4]
-    fmul
-    fst st(1)
-    frndint
-    fxch
-    fsub st(0), st(1)
-    f2xm1
-    fld1
-    fadd
-    fscale
-    ret
-} }
-
-
-static INLINE double __declspec(naked) libc_pow(double b, double e) { __asm {
-    fld qword ptr [esp+12]
-    fld qword ptr [esp+4]
-    fyl2x
-// following is a copy of libc_exp:
-    fst st(1)
-    frndint
-    fxch
-    fsub st(0), st(1)
-    f2xm1
-    fld1
-    fadd
-    fscale
-    ret
-} }
-
-
-
-#else // NEED_MINILIBC == 0
 
 #define libc_malloc  malloc
 #define libc_calloc  calloc
@@ -176,10 +79,6 @@ static INLINE double __declspec(naked) libc_pow(double b, double e) { __asm {
 #define libc_memcpy  memcpy
 #define libc_memmove memmove
 
-#define libc_frexp   frexp
-#define libc_exp     exp
-#define libc_pow     pow
-
-#endif // NEED_MINILIBC
+#define libc_frexpf  frexpf
 
 #endif//__LIBC_H_INCLUDED__
