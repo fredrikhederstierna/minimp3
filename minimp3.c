@@ -152,7 +152,19 @@ typedef struct _huff_table {
 } huff_table_t;
 
 static vlc_t huff_vlc[16];
+static VLC_TYPE huff_vlc_tables[
+  0+128+128+128+130+128+154+166+
+  142+204+190+170+542+460+662+414
+  ][2];
+static const int huff_vlc_tables_sizes[16] = {
+  0, 128, 128, 128, 130, 128, 154, 166,
+  142, 204, 190, 170, 542, 460, 662, 414
+};
 static vlc_t huff_quad_vlc[2];
+static VLC_TYPE huff_quad_vlc_tables[128+16][2];
+static const int huff_quad_vlc_tables_sizes[2] = {
+  128, 16
+};
 static uint16_t band_index_long[9][23];
 #define TABLE_4_3_SIZE (8191 + 16)*4
 static int8_t   table_4_3_exp[TABLE_4_3_SIZE];
@@ -933,10 +945,7 @@ static int alloc_table(vlc_t *vlc, int size) {
     index = vlc->table_size;
     vlc->table_size += size;
     if (vlc->table_size > vlc->table_allocated) {
-        vlc->table_allocated += (1 << vlc->bits);
-        vlc->table = libc_realloc(vlc->table, sizeof(VLC_TYPE) * 2 * vlc->table_allocated);
-        if (!vlc->table)
-            return -1;
+        libc_abort(); // cannot do anything, init_vlc() is used with too little memory
     }
     return index;
 }
@@ -1024,7 +1033,6 @@ static int init_vlc(
                     bits, bits_wrap, bits_size,
                     codes, codes_wrap, codes_size,
                     0, 0) < 0) {
-        libc_free(vlc->table);
         return -1;
     }
     return 0;
@@ -2277,7 +2285,7 @@ static int mp_decode_layer3(mp3_context_t *s) {
         s->last_buf_size= main_data_begin;
     }
 
-    memcpy(s->last_buf + s->last_buf_size, ptr, extrasize);
+    libc_memcpy(s->last_buf + s->last_buf_size, ptr, extrasize);
     s->in_gb= s->gb;
     init_get_bits(&s->gb, s->last_buf + s->last_buf_size - main_data_begin, main_data_begin*8);
 
@@ -2477,6 +2485,7 @@ static int mp3_decode_init(mp3_context_t *s) {
     int i, j, k;
 
     if (!init) {
+        int offset;
         /* synth init */
         for(i=0;i<257;i++) {
             int v;
@@ -2492,6 +2501,7 @@ static int mp3_decode_init(mp3_context_t *s) {
         }
 
         /* huffman decode tables */
+        offset = 0;
         for(i=1;i<16;i++) {
             const huff_table_t *h = &mp3_huff_tables[i];
             int xsize, x, y;
@@ -2511,13 +2521,23 @@ static int mp3_decode_init(mp3_context_t *s) {
                 }
             }
 
+            huff_vlc[i].table = huff_vlc_tables+offset;
+            huff_vlc[i].table_allocated = huff_vlc_tables_sizes[i];
             init_vlc(&huff_vlc[i], 7, 512,
                      tmp_bits, 1, 1, tmp_codes, 2, 2);
+            offset += huff_vlc_tables_sizes[i];
         }
+        libc_assert(offset == sizeof(huff_vlc_tables)/(sizeof(VLC_TYPE)*2));
+
+        offset = 0;
         for(i=0;i<2;i++) {
+            huff_quad_vlc[i].table = huff_quad_vlc_tables+offset;
+            huff_quad_vlc[i].table_allocated = huff_quad_vlc_tables_sizes[i];
             init_vlc(&huff_quad_vlc[i], i == 0 ? 7 : 4, 16,
                      mp3_quad_bits[i], 1, 1, mp3_quad_codes[i], 1, 1);
+            offset += huff_quad_vlc_tables_sizes[i];
         }
+        libc_assert(offset == sizeof(huff_quad_vlc_tables)/(sizeof(VLC_TYPE)*2));
 
         for(i=0;i<9;i++) {
             k = 0;
@@ -2668,14 +2688,15 @@ retry:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+mp3_context_t __mp3_context;
 mp3_decoder_t mp3_create(void) {
-    void *dec = libc_calloc(sizeof(mp3_context_t), 1);
-    if (dec) mp3_decode_init((mp3_context_t*) dec);
+    void *dec = &__mp3_context;
+    libc_memset(dec, 0, sizeof(mp3_context_t));
+    mp3_decode_init((mp3_context_t*) dec);
     return (mp3_decoder_t) dec;
 }
 
 void mp3_done(mp3_decoder_t dec) {
-    libc_free(dec);
 }
 
 int mp3_decode(mp3_decoder_t dec, void *buf, int bytes, signed short *out, mp3_info_t *info) {
