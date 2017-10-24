@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     printf("Decoded MP3 files size %d into %d PCM samples\n", tot_mp3_size, tot_pcm_samples);
 
     // wait some time to let sound play...
-    sleep(10);
+    sleep(3*5);
     /* Close the handle and exit */
     snd_pcm_close (playback_handle);
 #ifdef WRITE_DECODED_FILE

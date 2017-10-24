@@ -156,13 +156,13 @@ static VLC_TYPE huff_vlc_tables[
   0+128+128+128+130+128+154+166+
   142+204+190+170+542+460+662+414
   ][2];
-static const int huff_vlc_tables_sizes[16] = {
+static const uint16_t huff_vlc_tables_sizes[16] = {
   0, 128, 128, 128, 130, 128, 154, 166,
   142, 204, 190, 170, 542, 460, 662, 414
 };
 static vlc_t huff_quad_vlc[2];
 static VLC_TYPE huff_quad_vlc_tables[128+16][2];
-static const int huff_quad_vlc_tables_sizes[2] = {
+static const uint16_t huff_quad_vlc_tables_sizes[2] = {
   128, 16
 };
 static uint16_t band_index_long[9][23];
@@ -1069,8 +1069,8 @@ static int init_vlc(
     SKIP_BITS(name, gb, n)\
 }
 
-static int get_vlc2(bitstream_t *s, VLC_TYPE (*table)[2], int bits, int max_depth) {
-    int code;
+static VLC_TYPE get_vlc2(bitstream_t *s, VLC_TYPE (*table)[2], int bits, int max_depth) {
+    VLC_TYPE code;
 
     OPEN_READER(re, s)
     UPDATE_CACHE(re, s)
@@ -1161,13 +1161,11 @@ static void lsf_sf_expand(int *slen, int sf, int n1, int n2, int n3)
 }
 #endif
 
-static int l3_unscale(int value, int exponent)
+static uint32_t l3_unscale(VLC_TYPE value, int16_t exponent)
 {
-    unsigned int m;
-    int e;
-
-    e = table_4_3_exp  [4*value + (exponent&3)];
-    m = table_4_3_value[4*value + (exponent&3)];
+    //printf("unscale val %d exp %d\n", value, exponent);
+    int16_t e  = table_4_3_exp  [4*value + (exponent&3)];
+    uint32_t m = table_4_3_value[4*value + (exponent&3)];
     e -= (exponent >> 2);
     if (e > 31)
         return 0;
@@ -1453,15 +1451,13 @@ static int huffman_decode(
 
         /* read huffcode and compute each couple */
         for(;j>0;j--) {
-            int exponent, x, y, v;
-            int pos= get_bits_count(&s->gb);
-
+            int pos = get_bits_count(&s->gb);
             if (pos >= end_pos){
                 switch_buffer(s, &pos, &end_pos, &end_pos2);
                 if(pos >= end_pos)
                     break;
             }
-            y = get_vlc2(&s->gb, vlc->table, 7, 3);
+            VLC_TYPE y = get_vlc2(&s->gb, vlc->table, 7, 3);
 
             if(!y){
                 g->sb_hybrid[s_index  ] =
@@ -1470,10 +1466,11 @@ static int huffman_decode(
                 continue;
             }
 
-            exponent= exponents[s_index];
+            int16_t exponent = exponents[s_index];
 
             if(y&16){
-                x = y >> 5;
+                uint32_t v;
+                VLC_TYPE x = y >> 5;
                 y = y & 0x0f;
                 if (x < 15){
                     v = expval_table[ exponent ][ x ];
@@ -1494,7 +1491,8 @@ static int huffman_decode(
                     v = -v;
                 g->sb_hybrid[s_index+1] = v;
             }else{
-                x = y >> 5;
+                uint32_t v;
+                VLC_TYPE x = y >> 5;
                 y = y & 0x0f;
                 x += y;
                 if (x < 15){
@@ -1516,8 +1514,7 @@ static int huffman_decode(
     vlc = &huff_quad_vlc[g->count1table_select];
     last_pos=0;
     while (s_index <= 572) {
-        int pos, code;
-        pos = get_bits_count(&s->gb);
+        int pos = get_bits_count(&s->gb);
         if (pos >= end_pos) {
             if (pos > end_pos2 && last_pos){
                 /* some encoders generate an incorrect size for this
@@ -1532,7 +1529,7 @@ static int huffman_decode(
         }
         last_pos= pos;
 
-        code = get_vlc2(&s->gb, vlc->table, vlc->bits, 1);
+        VLC_TYPE code = get_vlc2(&s->gb, vlc->table, vlc->bits, 1);
         g->sb_hybrid[s_index+0]=
         g->sb_hybrid[s_index+1]=
         g->sb_hybrid[s_index+2]=
@@ -2550,17 +2547,43 @@ static int mp3_decode_init(mp3_context_t *s) {
 
         /* compute n ^ (4/3) and store it in mantissa/exp format */
 
+#if 0
+        int m_max = -INT_MAX;
+        int m_min = INT_MAX;
+        int e_max = -INT_MAX;
+        int e_min = INT_MAX;
+#endif
         for(i=1;i<TABLE_4_3_SIZE;i++) {
             float value = i/4;
-            float f, fm;
-            int e, m;
-            f = value * cbrtf(value) * exp2f((i&3)*0.25);
-            fm = libc_frexpf(f, &e);
-            m = (uint32_t)(fm*(1LL<<31) + 0.5f);
-            e+= FRAC_BITS - 31 + 5 - 100;
+            float f = value * cbrtf(value) * exp2f((i&3)*0.25);
+            int e;
+            float fm = libc_frexpf(f, &e);
+            //printf("fm=%.2f e=%d\n", fm, e); // e=[0..19]
+            int m = (uint32_t)(fm*(1LL<<31) + 0.5f);
+            e += FRAC_BITS - 31 + 5 - 100;
             table_4_3_value[i] = m;
             table_4_3_exp[i] = -e;
+#if 0
+            if (m_max < m) {
+              m_max = m;
+            }
+            if (m_min > m) {
+              m_min = m;
+            }
+            if (e_max < -e) {
+              e_max = -e;
+            }
+            if (e_min > -e) {
+              e_min = -e;
+            }
+#endif
         }
+        //printf("\nmmax %d(%08x) mmin %d(%08x) emax %d(%08x) emin %d(%08x)\n", m_max, m_max, m_min, m_min, e_max, e_max, e_min, e_min);
+
+#if 0
+        float f_max = 0.0f;
+        float f_min = 0.0f;
+#endif
         for(i=0; i<512*16; i++){
             int value = i&15;
             int exponent= (i>>4);
@@ -2568,7 +2591,16 @@ static int mp3_decode_init(mp3_context_t *s) {
             expval_table[exponent][value]= f;
             if(value==1)
                 exp_table[exponent]= f;
+#if 0
+            if (f_max < f) {
+              f_max = f;
+            }
+            if (f_min > f) {
+              f_min = f;
+            }
+#endif
         }
+        //printf("f_max %.2f(%08x) f_min %.2f(%08x)\n", f_max, (int)f_max, f_min, (int)f_min);
 
         for(i=0;i<7;i++) {
             int v;
