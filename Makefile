@@ -29,7 +29,8 @@ release:	$(BIN)
 	upx --brute $(BIN)
 
 test:	$(BIN)
-	./$(BIN) "./test/bach_8khz_mono.mp3" default
+#	./$(BIN) "./test/bach_8khz_mono.mp3" default
+	./$(BIN) "./test/SoundHelix-Song-1.mp3" default
 
 $(BIN):	$(OBJS)
 	$(CC) $(OBJS) -o $(BIN) -lm -lasound

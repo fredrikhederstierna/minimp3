@@ -89,15 +89,29 @@ int main(int argc, char *argv[])
     snd_pcm_hw_params_any (playback_handle, hw_params);
 
     printf("snd_pcm_hw_params_set\n");
-    
-    /* Set parameters : interleaved channels, 16 bits little endian, 8000Hz, 1 channel */
+
+#if 1
+    /* Set parameters : interleaved channels, 16 bits little endian, 44100Hz, 2 channels */
+    snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE);
+    unsigned int val = 44100;
+    int dir = 0;
+    snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &val, &dir);
+    // 2 channel stereo
+    int nb_channels = 2;
+    snd_pcm_hw_params_set_channels (playback_handle, hw_params, nb_channels);
+#endif
+#if 0
+    /* Set parameters : non interleaved channels, 16 bits little endian, 8000Hz, 1 channel */
     snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED);
     snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE);
     unsigned int val = 8000;
     int dir = 0;
     snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &val, &dir);
     // 1 channel mono
-    snd_pcm_hw_params_set_channels (playback_handle, hw_params, 1);
+    int nb_channels = 1;
+    snd_pcm_hw_params_set_channels (playback_handle, hw_params, nb_channels);
+#endif
 
     printf("snd_pcm_hw_params2\n");
         
@@ -121,7 +135,7 @@ int main(int argc, char *argv[])
       //write(pcm, (const void *) sample_buf, info.audio_bytes);
 
       int pos = 0;
-      int pcm_samples = (info.audio_bytes / 2);
+      int pcm_samples = (info.audio_bytes / 2) / nb_channels;
       tot_pcm_samples += pcm_samples;
       //printf("[mp3dec %d pcm] ", info.audio_bytes/2);
 #ifdef WRITE_DECODED_FILE
