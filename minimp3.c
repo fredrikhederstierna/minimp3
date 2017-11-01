@@ -166,9 +166,14 @@ static const uint16_t huff_quad_vlc_tables_sizes[2] = {
   128, 16
 };
 static uint16_t band_index_long[9][23];
+
 #define TABLE_4_3_SIZE (8191 + 16)*4
-static int8_t   table_4_3_exp[TABLE_4_3_SIZE];
-static uint32_t table_4_3_value[TABLE_4_3_SIZE];
+struct fixedfloat {
+  unsigned long mantissa  : 27;
+  unsigned short exponent :  5;
+};
+static struct fixedfloat table_4_3[TABLE_4_3_SIZE];
+
 static uint32_t exp_table[512];
 static uint32_t expval_table[512][16];
 static int32_t is_table[2][16];
@@ -1164,8 +1169,11 @@ static void lsf_sf_expand(int *slen, int sf, int n1, int n2, int n3)
 static uint32_t l3_unscale(VLC_TYPE value, int16_t exponent)
 {
     //printf("unscale val %d exp %d\n", value, exponent);
-    int16_t e  = table_4_3_exp  [4*value + (exponent&3)];
-    uint32_t m = table_4_3_value[4*value + (exponent&3)];
+    int16_t e  = table_4_3[4*value + (exponent&3)].exponent;
+    uint32_t m = table_4_3[4*value + (exponent&3)].mantissa;
+    m <<= 4;
+    e += FRAC_BITS - 31 + 5 - 100;
+    e = -e;
     e -= (exponent >> 2);
     if (e > 31)
         return 0;
@@ -2555,14 +2563,13 @@ static int mp3_decode_init(mp3_context_t *s) {
 #endif
         for(i=1;i<TABLE_4_3_SIZE;i++) {
             float value = i/4;
-            float f = value * cbrtf(value) * exp2f((i&3)*0.25);
+            float f = value * cbrtf(value) * exp2f((float)(i&3)/4);
             int e;
             float fm = libc_frexpf(f, &e);
-            //printf("fm=%.2f e=%d\n", fm, e); // e=[0..19]
-            int m = (uint32_t)(fm*(1LL<<31) + 0.5f);
-            e += FRAC_BITS - 31 + 5 - 100;
-            table_4_3_value[i] = m;
-            table_4_3_exp[i] = -e;
+            int m = (uint32_t)(fm*(1LL<<27) + 0.5f);
+            table_4_3[i].mantissa = m;
+            table_4_3[i].exponent = e;
+            //printf("fm=%.2f m=%d e=%d\n", fm, m, e); // e=[0..19]
 #if 0
             if (m_max < m) {
               m_max = m;
@@ -2570,15 +2577,15 @@ static int mp3_decode_init(mp3_context_t *s) {
             if (m_min > m) {
               m_min = m;
             }
-            if (e_max < -e) {
-              e_max = -e;
+            if (e_max < e) {
+              e_max = e;
             }
-            if (e_min > -e) {
-              e_min = -e;
+            if (e_min > e) {
+              e_min = e;
             }
 #endif
         }
-        //printf("\nmmax %d(%08x) mmin %d(%08x) emax %d(%08x) emin %d(%08x)\n", m_max, m_max, m_min, m_min, e_max, e_max, e_min, e_min);
+        //printf("\nmmin %d(%08x) mmax %d(%08x) emin %d(%08x) emax %d(%08x)\n", m_min, m_min, m_max, m_max, e_min, e_min, e_max, e_max);
 
 #if 0
         float f_max = 0.0f;

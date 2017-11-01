@@ -14,7 +14,11 @@
 size_t strlen(const char *s);
 #define out(text) do { int dummy = write(1, (const void *) text, strlen(text)); (void)dummy; } while(0)
 
+// if resulting file should be written to disk
 #define WRITE_DECODED_FILE
+
+//#define TEST_FILE_1
+#define TEST_FILE_2
 
 int main(int argc, char *argv[])
 {
@@ -90,18 +94,8 @@ int main(int argc, char *argv[])
 
     printf("snd_pcm_hw_params_set\n");
 
-#if 1
-    /* Set parameters : interleaved channels, 16 bits little endian, 44100Hz, 2 channels */
-    snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
-    snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE);
-    unsigned int val = 44100;
-    int dir = 0;
-    snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &val, &dir);
-    // 2 channel stereo
-    int nb_channels = 2;
-    snd_pcm_hw_params_set_channels (playback_handle, hw_params, nb_channels);
-#endif
-#if 0
+#ifdef TEST_FILE_1
+    printf("set parameters testfile 1 bach\n");
     /* Set parameters : non interleaved channels, 16 bits little endian, 8000Hz, 1 channel */
     snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_NONINTERLEAVED);
     snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE);
@@ -110,6 +104,18 @@ int main(int argc, char *argv[])
     snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &val, &dir);
     // 1 channel mono
     int nb_channels = 1;
+    snd_pcm_hw_params_set_channels (playback_handle, hw_params, nb_channels);
+#endif
+#ifdef TEST_FILE_2
+    printf("set parameters testfile 2 soundhelix\n");
+    /* Set parameters : interleaved channels, 16 bits little endian, 44100Hz, 2 channels */
+    snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE);
+    unsigned int val = 44100;
+    int dir = 0;
+    snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &val, &dir);
+    // 2 channel stereo
+    int nb_channels = 2;
     snd_pcm_hw_params_set_channels (playback_handle, hw_params, nb_channels);
 #endif
 
@@ -160,6 +166,7 @@ int main(int argc, char *argv[])
 
     // wait some time to let sound play...
     sleep(3*5);
+    //sleep(2);
     /* Close the handle and exit */
     snd_pcm_close (playback_handle);
 #ifdef WRITE_DECODED_FILE
