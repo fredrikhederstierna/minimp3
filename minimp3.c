@@ -167,21 +167,22 @@ static const uint16_t huff_quad_vlc_tables_sizes[2] = {
 };
 static uint16_t band_index_long[9][23];
 
-#define TABLE_4_3_SIZE (8191 + 16)*4
+#define TABLE_4_3_SIZE ((8191 + 16)*4)
 struct fixedfloat {
   unsigned long mantissa  : 27;
   unsigned short exponent :  5;
 };
 static struct fixedfloat table_4_3[TABLE_4_3_SIZE];
 
-static uint32_t exp_table[512];
 static uint32_t expval_table[512][16];
+
 static int32_t is_table[2][16];
 static int32_t is_table_lsf[2][2][16];
+
 static int32_t csa_table[8][4];
-static float csa_table_float[8][4];
+
 static int32_t mdct_win[8][36];
-static int16_t window[512];
+static int16_t synth_window[512];
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1544,13 +1545,12 @@ static int huffman_decode(
         g->sb_hybrid[s_index+3]= 0;
         while(code){
             static const int idxtab[16]={3,3,2,2,1,1,1,1,0,0,0,0,0,0,0,0};
-            int v;
-            int pos= s_index+idxtab[code];
+            int p = s_index+idxtab[code];
             code ^= 8>>idxtab[code];
-            v = exp_table[ exponents[pos] ];
+            int v = expval_table[ exponents[p] ][1];
             if(get_bits1(&s->gb))
                 v = -v;
-            g->sb_hybrid[pos] = v;
+            g->sb_hybrid[p] = v;
         }
         s_index+=4;
     }
@@ -1792,31 +1792,31 @@ static void compute_imdct(
 
 #define SUM8P2(sum1, op1, sum2, op2, w1, w2, p) \
 {                                               \
-    int tmp;\
-    tmp = p[0 * 64];\
-    sum1 op1 MULS((w1)[0 * 64], tmp);\
-    sum2 op2 MULS((w2)[0 * 64], tmp);\
-    tmp = p[1 * 64];\
-    sum1 op1 MULS((w1)[1 * 64], tmp);\
-    sum2 op2 MULS((w2)[1 * 64], tmp);\
-    tmp = p[2 * 64];\
-    sum1 op1 MULS((w1)[2 * 64], tmp);\
-    sum2 op2 MULS((w2)[2 * 64], tmp);\
-    tmp = p[3 * 64];\
-    sum1 op1 MULS((w1)[3 * 64], tmp);\
-    sum2 op2 MULS((w2)[3 * 64], tmp);\
-    tmp = p[4 * 64];\
-    sum1 op1 MULS((w1)[4 * 64], tmp);\
-    sum2 op2 MULS((w2)[4 * 64], tmp);\
-    tmp = p[5 * 64];\
-    sum1 op1 MULS((w1)[5 * 64], tmp);\
-    sum2 op2 MULS((w2)[5 * 64], tmp);\
-    tmp = p[6 * 64];\
-    sum1 op1 MULS((w1)[6 * 64], tmp);\
-    sum2 op2 MULS((w2)[6 * 64], tmp);\
-    tmp = p[7 * 64];\
-    sum1 op1 MULS((w1)[7 * 64], tmp);\
-    sum2 op2 MULS((w2)[7 * 64], tmp);\
+    int32_t __tmp;\
+    __tmp = p[0 * 64];\
+    sum1 op1 MULS((w1)[0 * 64], __tmp);\
+    sum2 op2 MULS((w2)[0 * 64], __tmp);\
+    __tmp = p[1 * 64];\
+    sum1 op1 MULS((w1)[1 * 64], __tmp);\
+    sum2 op2 MULS((w2)[1 * 64], __tmp);\
+    __tmp = p[2 * 64];\
+    sum1 op1 MULS((w1)[2 * 64], __tmp);\
+    sum2 op2 MULS((w2)[2 * 64], __tmp);\
+    __tmp = p[3 * 64];\
+    sum1 op1 MULS((w1)[3 * 64], __tmp);\
+    sum2 op2 MULS((w2)[3 * 64], __tmp);\
+    __tmp = p[4 * 64];\
+    sum1 op1 MULS((w1)[4 * 64], __tmp);\
+    sum2 op2 MULS((w2)[4 * 64], __tmp);\
+    __tmp = p[5 * 64];\
+    sum1 op1 MULS((w1)[5 * 64], __tmp);\
+    sum2 op2 MULS((w2)[5 * 64], __tmp);\
+    __tmp = p[6 * 64];\
+    sum1 op1 MULS((w1)[6 * 64], __tmp);\
+    sum2 op2 MULS((w2)[6 * 64], __tmp);\
+    __tmp = p[7 * 64];\
+    sum1 op1 MULS((w1)[7 * 64], __tmp);\
+    sum2 op2 MULS((w2)[7 * 64], __tmp);\
 }
 
 #define COS0_0  FIXHR(0.50060299823519630134/2)
@@ -2473,7 +2473,7 @@ static int mp3_decode_main(
         for(i=0;i<nb_frames;i++) {
             mp3_synth_filter(
                 s->synth_buf[ch], &(s->synth_buf_offset[ch]),
-                window, &s->dither_state,
+                synth_window, &s->dither_state,
                 samples_ptr, s->nb_channels,
                 s->sb_samples[ch][i]
             );
@@ -2498,11 +2498,11 @@ static int mp3_decode_init(mp3_context_t *s) {
             #if WFRAC_BITS < 16
                 v = (v + (1 << (16 - WFRAC_BITS - 1))) >> (16 - WFRAC_BITS);
             #endif
-            window[i] = v;
+            synth_window[i] = v;
             if ((i & 63) != 0)
                 v = -v;
             if (i != 0)
-                window[512 - i] = v;
+                synth_window[512 - i] = v;
         }
 
         /* huffman decode tables */
@@ -2566,7 +2566,7 @@ static int mp3_decode_init(mp3_context_t *s) {
             float f = value * cbrtf(value) * exp2f((float)(i&3)/4);
             int e;
             float fm = libc_frexpf(f, &e);
-            int m = (uint32_t)(fm*(1LL<<27) + 0.5f);
+            uint32_t m = (uint32_t)(fm*(1LL<<27) + 0.5f);
             table_4_3[i].mantissa = m;
             table_4_3[i].exponent = e;
             //printf("fm=%.2f m=%d e=%d\n", fm, m, e); // e=[0..19]
@@ -2592,12 +2592,10 @@ static int mp3_decode_init(mp3_context_t *s) {
         float f_min = 0.0f;
 #endif
         for(i=0; i<512*16; i++){
-            int value = i&15;
-            int exponent= (i>>4);
-            float f = value * cbrtf(value) * exp2f((exponent-400)*0.25f + FRAC_BITS + 5);
-            expval_table[exponent][value]= f;
-            if(value==1)
-                exp_table[exponent]= f;
+            uint16_t value = i&15;
+            uint16_t exponent = (i>>4);
+            float f = value * cbrtf(value) * exp2f((float)(exponent-400)/4 + FRAC_BITS + 5);
+            expval_table[exponent][value] = f;
 #if 0
             if (f_max < f) {
               f_max = f;
@@ -2627,7 +2625,7 @@ static int mp3_decode_init(mp3_context_t *s) {
             for(j=0;j<2;j++) {
                 int e = -(j + 1) * ((i + 1) >> 1);
                 float f = exp2f(e / 4.0f);
-                int k = i & 1;
+                k = i & 1;
                 is_table_lsf[j][k ^ 1][i] = FIXR(f);
                 is_table_lsf[j][k][i] = FIXR(1.0);
             }
@@ -2642,10 +2640,6 @@ static int mp3_decode_init(mp3_context_t *s) {
             csa_table[i][1] = FIXHR(ca/4);
             csa_table[i][2] = FIXHR(ca/4) + FIXHR(cs/4);
             csa_table[i][3] = FIXHR(ca/4) - FIXHR(cs/4);
-            csa_table_float[i][0] = cs;
-            csa_table_float[i][1] = ca;
-            csa_table_float[i][2] = ca + cs;
-            csa_table_float[i][3] = ca - cs;
         }
 
         /* compute mdct windows */

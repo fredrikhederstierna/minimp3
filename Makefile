@@ -4,7 +4,7 @@ CC = gcc
 ARMCC = /usr/local/gcc/csibe/arm-none-eabi-toolchain-gcc-7.1.0-csibe-softfloat/bin/arm-none-eabi-gcc
 ARMOBJDUMP = /usr/local/gcc/csibe/arm-none-eabi-toolchain-gcc-7.1.0-csibe-softfloat/bin/arm-none-eabi-objdump
 
-WARNINGS = -Wall -W -Wextra -Wno-unused-parameter -Wno-unused-but-set-variable
+WARNINGS = -Wall -W -Wextra -Wno-unused-parameter -Wno-unused-but-set-variable -Wshadow
 CFLAGS = $(WARNINGS) -Os
 #-march=pentium
 #CFLAGS += -ffast-math
@@ -31,8 +31,11 @@ release:	$(BIN)
 test:	$(BIN)
 	./$(BIN) "./test/bach_8khz_mono.mp3" default
 
-test2:	$(BIN)
+test1:	$(BIN)
 	./$(BIN) "./test/SoundHelix-Song-1.mp3" default
+
+test5:	$(BIN)
+	./$(BIN) "./test/SoundHelix-Song-5.mp3" default
 
 $(BIN):	$(OBJS)
 	$(CC) $(OBJS) -o $(BIN) -lm -lasound
