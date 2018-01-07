@@ -167,12 +167,22 @@ static const uint16_t huff_quad_vlc_tables_sizes[2] = {
 };
 static uint16_t band_index_long[9][23];
 
+// FIXME: This feature is not yet fully working,
+// check why audio output not 100% correct.
+//#define SHRINK_MEM
+#ifdef SHRINK_MEM
+#define TABLE_4_3_SIZE (8191 + 16)
+#else
 #define TABLE_4_3_SIZE ((8191 + 16)*4)
+#endif
 struct fixedfloat {
   unsigned long mantissa  : 27;
-  unsigned short exponent :  5;
+  unsigned short exponent :  5; // [0..31]
 };
 static struct fixedfloat table_4_3[TABLE_4_3_SIZE];
+#ifdef SHRINK_MEM
+static struct fixedfloat table_4_3_exp2[TABLE_4_3_SIZE];
+#endif
 
 static uint32_t expval_table[512][16];
 
@@ -1167,6 +1177,50 @@ static void lsf_sf_expand(int *slen, int sf, int n1, int n2, int n3)
 }
 #endif
 
+#ifdef SHRINK_MEM
+// exponent is [0..511]  [0x0000..0x01FF]
+static uint32_t l3_unscale(VLC_TYPE value, int16_t exponent)
+{
+  //printf("unscale val %04x exp %04x\n", value, exponent);
+    int16_t e  = table_4_3[value].exponent;
+    uint32_t m = table_4_3[value].mantissa;
+
+    //int16_t e2  = table_4_3_exp2[value].exponent;
+    //uint32_t m2 = table_4_3_exp2[value].mantissa;
+
+    int ex;
+    float ff = exp2f((float)(exponent&3)/4);  // 2 ^ [0/4, 1/4, 2/4, 3/4]
+    float ffx = libc_frexpf(ff, &ex);
+    uint32_t mx = (uint32_t)(ffx*(1LL<<27) + 0.5f);
+
+    // scale mx to same power of 2^e
+    if (ex < e) {
+      mx >>= (e - ex);
+    }
+    else {
+      mx <<= (ex - e);
+    }
+
+    // multiply
+    m = m * mx;
+    //printf("%d %d,", e, ex);
+    //while (m >= (1LL << 28)) {
+    //  m >>= 1;
+    //  e++;
+    //}
+
+    m <<= (4 - 1);
+
+    e += FRAC_BITS - 31 + 5 - 100;
+    e = -e;
+    e -= (exponent >> 2);
+    if (e > 31)
+        return 0;
+    m = (m + (1 << (e-1))) >> e;
+
+    return m;
+}
+#else
 static uint32_t l3_unscale(VLC_TYPE value, int16_t exponent)
 {
     //printf("unscale val %d exp %d\n", value, exponent);
@@ -1182,6 +1236,7 @@ static uint32_t l3_unscale(VLC_TYPE value, int16_t exponent)
 
     return m;
 }
+#endif
 
 static int round_sample(int *sum) {
     int sum1;
@@ -2561,6 +2616,27 @@ static int mp3_decode_init(mp3_context_t *s) {
         int e_max = -INT_MAX;
         int e_min = INT_MAX;
 #endif
+#ifdef SHRINK_MEM
+        // n^(4/3)
+        // = n^(1/3) * n^(1/3) * n^(1/3) * n^(1/3)
+        // = n * n^(1/3)
+        for(i=1;i<TABLE_4_3_SIZE;i++) {
+            float value = i;
+            float f = value * cbrtf(value); // * exp2f((float)(i&3)/4); // 2 ^ [0/4, 1/4, 2/4, 3/4]
+            int e;
+            float fm = libc_frexpf(f, &e);
+            uint32_t m = (uint32_t)(fm*(1LL<<27) + 0.5f);
+            table_4_3[i].mantissa = m;
+            table_4_3[i].exponent = e;
+
+            //float fe = exp2f((float)(i&3));
+            //float fme = libc_frexpf(fe, &e);
+            //m = (uint32_t)(fme*(1LL<<27) + 0.5f);
+            //table_4_3_exp2[i].mantissa = m;
+            //table_4_3_exp2[i].exponent = e;
+
+            //printf("fm=%.2f m=%d e=%d\n", fm, m, e); // e=[0..19]
+#else
         for(i=1;i<TABLE_4_3_SIZE;i++) {
             float value = i/4;
             float f = value * cbrtf(value) * exp2f((float)(i&3)/4);
@@ -2570,6 +2646,7 @@ static int mp3_decode_init(mp3_context_t *s) {
             table_4_3[i].mantissa = m;
             table_4_3[i].exponent = e;
             //printf("fm=%.2f m=%d e=%d\n", fm, m, e); // e=[0..19]
+#endif
 #if 0
             if (m_max < m) {
               m_max = m;
